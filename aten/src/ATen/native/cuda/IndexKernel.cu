@@ -19,6 +19,10 @@
 
 #include <c10/core/Scalar.h>
 
+#include <ATen/kernelmanager/KernelManager.h>
+#include <ATen/kernelmanager/kernels/IndexElementwiseKernel.h>
+#include <memory> // 包含 std::make_unique
+
 namespace at::native {
 
 static constexpr int launch_bound2 = 4;
@@ -51,8 +55,11 @@ static void launch_kernel(const int64_t N, const func_t& f) {
   const auto stream = at::cuda::getCurrentCUDAStream();
   // KERNEL HOOKED
   // printf("Launching index_elementwise_kernel with grid (%d), block (%d)\n", grid.x, block.x);
-  index_elementwise_kernel<nt, vt, func_t><<<grid, block, 0, stream>>>(N, f);
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  auto kernel_to_enqueue = std::make_unique<IndexElementwiseKernel<nt, vt, func_t>>(N, f, grid, block, stream);
+  KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+  KernelManager::getInstance().launchKernels();
+  // index_elementwise_kernel<nt, vt, func_t><<<grid, block, 0, stream>>>(N, f);
+  // C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 template <typename func_t>

@@ -40,6 +40,11 @@
 #include <c10/macros/Macros.h>
 #include <c10/util/TypeCast.h>
 
+#include <ATen/kernelmanager/KernelManager.h>
+#include <ATen/kernelmanager/kernels/VectorizedElementwiseKernel.h>
+#include <ATen/kernelmanager/kernels/UnrolledElementwiseKernel.h>
+#include <memory> // 包含 std::make_unique
+
 #ifdef __NVCC__
 #define ASSERT_HOST_DEVICE_LAMBDA(type)                       \
   static_assert(                                              \
@@ -321,37 +326,70 @@ static inline void launch_vectorized_kernel(
   // printf("launch_vectorized_kernel vec_size=%d io_size=%d tws=%d bws=%d grid=%d\n", vec_size, io_size, tws, bws, grid);
   switch (vec_size) {
 #ifdef USE_ROCM
-    case 16:
-      vectorized_elementwise_kernel<16, func_t, array_t>
-          <<<grid, num_threads(), 0, stream>>>(N, f, data);
-      C10_CUDA_KERNEL_LAUNCH_CHECK();
+    case 16: {
+      auto kernel_to_enqueue
+        = std::make_unique<VectorizedElementwiseKernel<16, func_t, array_t>>(N, f, data, grid, num_threads(), stream);
+      KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+      KernelManager::getInstance().launchKernels();
+      // vectorized_elementwise_kernel<16, func_t, array_t>
+      //     <<<grid, num_threads(), 0, stream>>>(N, f, data);
+      // C10_CUDA_KERNEL_LAUNCH_CHECK();
       break;
+    }
 #endif
-    case 8:
-      vectorized_elementwise_kernel<8, func_t, array_t>
-          <<<grid, num_threads(), 0, stream>>>(N, f, data);
-      C10_CUDA_KERNEL_LAUNCH_CHECK();
+    case 8: {
+      auto kernel_to_enqueue
+        = std::make_unique<VectorizedElementwiseKernel<8, func_t, array_t>>(N, f, data, grid, num_threads(), stream);
+      KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+      KernelManager::getInstance().launchKernels();
+      // vectorized_elementwise_kernel<8, func_t, array_t>
+      //     <<<grid, num_threads(), 0, stream>>>(N, f, data);
+      // C10_CUDA_KERNEL_LAUNCH_CHECK();
       break;
-    case 4:
-      vectorized_elementwise_kernel<4, func_t, array_t>
-          <<<grid, num_threads(), 0, stream>>>(N, f, data);
-      C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    case 4: {
+      auto kernel_to_enqueue
+        = std::make_unique<VectorizedElementwiseKernel<4, func_t, array_t>>(N, f, data, grid, num_threads(), stream);
+      KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+      KernelManager::getInstance().launchKernels();
+      // vectorized_elementwise_kernel<4, func_t, array_t>
+      //     <<<grid, num_threads(), 0, stream>>>(N, f, data);
+      // C10_CUDA_KERNEL_LAUNCH_CHECK();
       break;
-    case 2:
-      vectorized_elementwise_kernel<2, func_t, array_t>
-          <<<grid, num_threads(), 0, stream>>>(N, f, data);
-      C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    case 2: {
+      auto kernel_to_enqueue
+        = std::make_unique<VectorizedElementwiseKernel<2, func_t, array_t>>(N, f, data, grid, num_threads(), stream);
+      KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+      KernelManager::getInstance().launchKernels();
+      // vectorized_elementwise_kernel<2, func_t, array_t>
+      //     <<<grid, num_threads(), 0, stream>>>(N, f, data);
+      // C10_CUDA_KERNEL_LAUNCH_CHECK();
       break;
+    }
     case 1: {
       auto input_calc = TrivialOffsetCalculator<traits::arity>();
       auto output_calc = TrivialOffsetCalculator<1>();
       auto loader = memory::LoadWithoutCast();
       auto storer = memory::StoreWithoutCast();
       int64_t grid_unrolled = (N + elementwise_block_work_size() - 1) / elementwise_block_work_size();
-      unrolled_elementwise_kernel<func_t, array_t, elementwise_thread_work_size()>
-          <<<grid_unrolled, num_threads(), 0, stream>>>(
-              N, f, data, input_calc, output_calc, loader, storer);
-      C10_CUDA_KERNEL_LAUNCH_CHECK();
+      auto kernel_to_enqueue
+        = std::make_unique<UnrolledElementwiseKernel<
+              func_t,                                // 1. func_t
+              array_t,                               // 2. array_t
+              elementwise_thread_work_size(),        // 3. elems_per_thread (int)
+              decltype(input_calc),                  // 4. inp_calc_t
+              decltype(output_calc),                 // 5. out_calc_t
+              decltype(loader),                      // 6. loader_t
+              decltype(storer)                       // 7. storer_t
+          >>(
+          N, f, data, input_calc, output_calc, loader, storer, grid_unrolled, num_threads(), stream);
+      KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+      KernelManager::getInstance().launchKernels();
+      // unrolled_elementwise_kernel<func_t, array_t, elementwise_thread_work_size()>
+      //     <<<grid_unrolled, num_threads(), 0, stream>>>(
+      //         N, f, data, input_calc, output_calc, loader, storer);
+      // C10_CUDA_KERNEL_LAUNCH_CHECK();
       break;
     }
     default:

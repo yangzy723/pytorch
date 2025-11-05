@@ -16,11 +16,9 @@
 #include <c10/util/irange.h>
 #include <c10/core/ScalarType.h>
 
-// --- 添加以下内容 ---
-#include <ATen/kernelmanager/KernelManager.h> // 包含内核管理器
-#include <ATen/kernelmanager/GemmInternalCublasBF16Kernel.h>  // 包含我们特定的 GEMM 内核
-#include <memory>         // 包含 std::make_unique
-// --- 添加结束 ---
+#include <ATen/kernelmanager/KernelManager.h>
+#include <ATen/kernelmanager/kernels/GemmInternalCublasBF16Kernel.h>
+#include <memory> // 包含 std::make_unique
 
 #ifdef USE_ROCM
 #include <hipblaslt/hipblaslt-ext.hpp>
@@ -1223,49 +1221,43 @@ inline void gemm_internal_cublas_bfloat16_helper(CUDABLAS_GEMM_ARGTYPES_AND_C_DT
   auto compute_type = CUDA_R_32F;
 #endif
 
-  auto kernel_to_enqueue = std::make_unique<GemmInternalCublasBF16Kernel<C_Dtype>>(
+  // // KERNEL HOOKED
+  // printf("gemm_internal_cublas_bfloat16_helper: m=%ld, n=%ld, k=%ld, lda=%ld, ldb=%ld, ldc=%ld\n", m, n, k, lda, ldb, ldc);
+  auto kernel_to_enqueue = std::make_unique<GemmInternalCublasBF16Kernel>(
       handle,
-      opa,
-      opb,
-      m,
-      n,
-      k,
-      falpha, // 传递 falpha 的值
-      a,
-      lda,
-      b,
-      ldb,
-      fbeta,  // 传递 fbeta 的值
-      c,
-      ldc,
-      compute_type,
-      cublas_flags
+      cublas_flags,
+      opa, opb,
+      m, n, k,
+      (void *)&falpha, (void *)a, CUDA_R_16BF, lda,
+      (void *)b, CUDA_R_16BF, ldb, (void *)&fbeta,
+      (void *)c, std::is_same_v<C_Dtype, float> ? CUDA_R_32F : CUDA_R_16BF, ldc,
+      compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP
   );
   KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
-//   TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, cublas_flags));
-//   //KERNEL HOOKED
-//   printf("gemm_internal_cublas_bfloat16_helper: m=%ld, n=%ld, k=%ld, lda=%ld, ldb=%ld, ldc=%ld\n", m, n, k, lda, ldb, ldc);
-//   TORCH_CUDABLAS_CHECK(cublasGemmEx(
-//       handle,
-//       opa,
-//       opb,
-//       m,
-//       n,
-//       k,
-//       &falpha,
-//       a,
-//       CUDA_R_16BF,
-//       lda,
-//       b,
-//       CUDA_R_16BF,
-//       ldb,
-//       &fbeta,
-//       c,
-//       std::is_same_v<C_Dtype, float> ? CUDA_R_32F : CUDA_R_16BF,
-//       ldc,
-//       compute_type,
-//       CUBLAS_GEMM_DEFAULT_TENSOR_OP));
-//   TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, CUBLAS_DEFAULT_MATH));
+  KernelManager::getInstance().launchKernels();
+
+  // TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, cublas_flags));
+  // TORCH_CUDABLAS_CHECK(cublasGemmEx(
+  //     handle,
+  //     opa,
+  //     opb,
+  //     m,
+  //     n,
+  //     k,
+  //     &falpha,
+  //     a,
+  //     CUDA_R_16BF,
+  //     lda,
+  //     b,
+  //     CUDA_R_16BF,
+  //     ldb,
+  //     &fbeta,
+  //     c,
+  //     std::is_same_v<C_Dtype, float> ? CUDA_R_32F : CUDA_R_16BF,
+  //     ldc,
+  //     compute_type,
+  //     CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+  // TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, CUBLAS_DEFAULT_MATH));
 }
 
 template <>

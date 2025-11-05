@@ -12,8 +12,8 @@ KernelManager& KernelManager::getInstance() {
 // --- 构造函数 ---
 KernelManager::KernelManager() : stop_(false) {
     // 启动工作线程，workerLoop 将成为新线程的入口点
-    workerThread_ = std::thread(&KernelManager::workerLoop, this);
-    std::cout << "[KernelManager] 工作线程已启动。" << std::endl; // 可以取消注释以进行调试
+    // workerThread_ = std::thread(&KernelManager::workerLoop, this);
+    // std::cout << "[KernelManager] 工作线程已启动。" << std::endl; // 可以取消注释以进行调试
 }
 
 // --- 析构函数 ---
@@ -39,7 +39,7 @@ void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
 
     // 3. 唤醒一个正在等待的线程
     // (即工作线程，如果它正在休眠)
-    cv_.notify_one();
+    // cv_.notify_one();
 }
 
 void KernelManager::launchKernels() {

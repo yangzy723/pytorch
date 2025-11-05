@@ -1,6 +1,7 @@
 #pragma once
 
-#include "Kernel.h"
+#include "kernels/Kernel.h"
+
 #include <queue>
 #include <mutex>
 #include <condition_variable>
