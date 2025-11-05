@@ -22,7 +22,11 @@
 
 #define GPU_LAMBDA __device__ __host__
 
-namespace {
+#include <ATen/kernelmanager/KernelManager.h>
+#include <ATen/kernelmanager/kernels/ElementwiseKernelWithIndex.h>
+#include <memory> // 包含 std::make_unique
+
+namespace at::native {
 
 #if defined(USE_ROCM)
 constexpr int num_threads() {
@@ -58,17 +62,23 @@ void gpu_kernel_with_index(at::Tensor &output, func_t f) {
   auto stream = at::cuda::getCurrentCUDAStream();
   using scalar_t = typename function_traits<func_t>::result_type;
   if (N <= std::numeric_limits<int>::max()) {
-    elementwise_kernel_with_index<int><<<grid, num_threads(), 0, stream>>>(N, f, output.mutable_data_ptr<scalar_t>());
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    auto kernel_to_enqueue = 
+      std::make_unique<ElementwiseKernelWithIndex<int, func_t>>(
+        N, f, output.mutable_data_ptr<scalar_t>(), grid, num_threads(), stream);
+    KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+    KernelManager::getInstance().launchKernels();
+    // elementwise_kernel_with_index<int><<<grid, num_threads(), 0, stream>>>(N, f, output.mutable_data_ptr<scalar_t>());
+    // C10_CUDA_KERNEL_LAUNCH_CHECK();
   } else {
-    elementwise_kernel_with_index<int64_t><<<grid, num_threads(), 0, stream>>>(N, f, output.mutable_data_ptr<scalar_t>());
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    auto kernel_to_enqueue = 
+      std::make_unique<ElementwiseKernelWithIndex<int64_t, func_t>>(
+        N, f, output.mutable_data_ptr<scalar_t>(), grid, num_threads(), stream);
+    KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+    KernelManager::getInstance().launchKernels();
+    // elementwise_kernel_with_index<int64_t><<<grid, num_threads(), 0, stream>>>(N, f, output.mutable_data_ptr<scalar_t>());
+    // C10_CUDA_KERNEL_LAUNCH_CHECK();
   }
 }
-
-}  // namespace
-
-namespace at::native {
 
 Tensor& linspace_cuda_out(const Scalar& start, const Scalar& end, int64_t steps, Tensor& result) {
   TORCH_CHECK(steps >= 0, "number of steps must be non-negative");

@@ -549,11 +549,26 @@ static inline void launch_unrolled_kernel(
     storer_t s) {
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
 
+  // KERNEL HOOKED
+  // printf("launch_unrolled_kernel io_size=%d thread_work_size=%d block_work_size=%d grid=%d\n",
   int64_t grid = (N + elementwise_block_work_size() - 1) / elementwise_block_work_size();
   auto stream = at::cuda::getCurrentCUDAStream();
-  unrolled_elementwise_kernel<func_t, array_t, elementwise_thread_work_size()>
-      <<<grid, num_threads(), 0, stream>>>(N, f, data, ic, oc, l, s);
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  auto kernel_to_enqueue
+    = std::make_unique<UnrolledElementwiseKernel<
+          func_t,
+          array_t,
+          elementwise_thread_work_size(),
+          inp_calc_t,
+          out_calc_t,
+          loader_t,
+          storer_t
+      >>(
+      N, f, data, ic, oc, l, s, grid, num_threads(), stream);
+  KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+  KernelManager::getInstance().launchKernels();
+  // unrolled_elementwise_kernel<func_t, array_t, elementwise_thread_work_size()>
+  //     <<<grid, num_threads(), 0, stream>>>(N, f, data, ic, oc, l, s);
+  // C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 template <int nt, int vt, typename func_t>
