@@ -23,12 +23,16 @@
 #include <ATen/ops/narrow.h>
 #endif
 
+#include <ATen/kernelmanager/KernelManager.h>
+#include <ATen/kernelmanager/kernels/CatArrayBatchedCopyAlignedKContig.h>
+#include <memory> // 包含 std::make_unique
+
 namespace at::native {
 
-constexpr int CAT_ARRAY_BATCH_SIZE = 128;
-constexpr int CAT_ARRAY_MAX_INPUT_DIMS = 4;
-constexpr int ALIGNED_VEC_LOAD_BYTES_16 = 16;
-constexpr int ALIGNED_VEC_LOAD_BYTES_8 = 8;
+// constexpr int CAT_ARRAY_BATCH_SIZE = 128;
+// constexpr int CAT_ARRAY_MAX_INPUT_DIMS = 4;
+// constexpr int ALIGNED_VEC_LOAD_BYTES_16 = 16;
+// constexpr int ALIGNED_VEC_LOAD_BYTES_8 = 8;
 
 namespace {
 
@@ -99,39 +103,39 @@ inline std::tuple<dim3, dim3> getCatGridContig(unsigned int max_elements_per_ten
 
 // Similar to any other IndexToOffset calculation for copying along a given
 // dimension.
-template <typename IndexType, int Dims>
-struct CatArrIndexToOffset {
-  static inline __device__ IndexType compute(
-      const IndexType tensorSize[Dims],
-      const IndexType tensorStride[Dims],
-      const IndexType dimSize,
-      const unsigned int concatDim,
-      IndexType linearIndex) {
-    // linearIndex is not really linear index, but instead the offset in
-    // input tensor. If the input tensor is contiguous, then this offset
-    // is the linear index, but if the input tensor is channels last, then
-    // it is the linear index of the permuted contiguous tensor
-    IndexType offset = 0;
+// template <typename IndexType, int Dims>
+// struct CatArrIndexToOffset {
+//   static inline __device__ IndexType compute(
+//       const IndexType tensorSize[Dims],
+//       const IndexType tensorStride[Dims],
+//       const IndexType dimSize,
+//       const unsigned int concatDim,
+//       IndexType linearIndex) {
+//     // linearIndex is not really linear index, but instead the offset in
+//     // input tensor. If the input tensor is contiguous, then this offset
+//     // is the linear index, but if the input tensor is channels last, then
+//     // it is the linear index of the permuted contiguous tensor
+//     IndexType offset = 0;
 
-    #pragma unroll
-    for (int i = Dims - 1; i >= 1; --i) {
-      IndexType curDimSize = i == concatDim ? dimSize : tensorSize[i];
-      IndexType nextDimIndex = linearIndex / curDimSize;
-      IndexType curDimIndex = linearIndex - curDimSize * nextDimIndex;
-      IndexType curDimOffset = curDimIndex * tensorStride[i];
-      offset += curDimOffset;
-      linearIndex = nextDimIndex;
-    }
+//     #pragma unroll
+//     for (int i = Dims - 1; i >= 1; --i) {
+//       IndexType curDimSize = i == concatDim ? dimSize : tensorSize[i];
+//       IndexType nextDimIndex = linearIndex / curDimSize;
+//       IndexType curDimIndex = linearIndex - curDimSize * nextDimIndex;
+//       IndexType curDimOffset = curDimIndex * tensorStride[i];
+//       offset += curDimOffset;
+//       linearIndex = nextDimIndex;
+//     }
 
-    return offset + linearIndex * tensorStride[0];
-  }
-};
+//     return offset + linearIndex * tensorStride[0];
+//   }
+// };
 
-template<typename IndexType, unsigned int MaxDims>
-struct TensorSizeStride {
-  IndexType tensorSize[MaxDims];
-  IndexType tensorStride[MaxDims];
-};
+// template<typename IndexType, unsigned int MaxDims>
+// struct TensorSizeStride {
+//   IndexType tensorSize[MaxDims];
+//   IndexType tensorStride[MaxDims];
+// };
 
 /**
   * Kernel used to concatenated grimDim.y tensors into an output tensor. Uses a
@@ -152,15 +156,15 @@ struct TensorSizeStride {
 // pass meta data directly through kernel argument instead of pin memory
 // In contiguous case, we will not need stride_size, setting it as 1 as placeholder
 // to pass compile.
-template <typename T, typename IndexType, int n, int stride_size>
-struct CatArrInputTensorMetadata {
-  const T* input[n];
-  IndexType offset[n];
-  IndexType dimSize[n];
-  IndexType nElements[n];
-  bool isContiguous[n];
-  TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> tensorStride[stride_size];
-};
+// template <typename T, typename IndexType, int n, int stride_size>
+// struct CatArrInputTensorMetadata {
+//   const T* input[n];
+//   IndexType offset[n];
+//   IndexType dimSize[n];
+//   IndexType nElements[n];
+//   bool isContiguous[n];
+//   TensorSizeStride<IndexType, CAT_ARRAY_MAX_INPUT_DIMS> tensorStride[stride_size];
+// };
 
 template <typename T, typename IndexType, int Dims, int batch_size, int stride_size>
 __global__ void CatArrayBatchedCopy(
@@ -412,11 +416,32 @@ void parallel_cat(const Tensor &out, const MaterializedITensorListRef& inputs, i
       }
     }
     // Template Declarations for dim = 1, 2, 3, 4
+// #define HANDLE_CASE(DIMS) \
+//     if (isContig && isAligned && sizeof(scalar_t) > 2 && sizeof(scalar_t) <= 8) {\
+//       CatArrayBatchedCopy_alignedK_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_16><<<\
+//           catGrid, applyBlock, 0, stream.stream()>>>(\
+//               data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
+//     } else if (isContig && isAligned && sizeof(scalar_t) == 2) { \
+//       CatArrayBatchedCopy_alignedK_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_8><<<\
+//           catGrid, applyBlock, 0, stream.stream()>>>(\
+//               data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
+//     } else if (isContig) {\
+//       CatArrayBatchedCopy_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size><<<\
+//           catGrid, applyBlock, 0, stream.stream()>>>(\
+//               data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
+//     } else {\
+//       CatArrayBatchedCopy<scalar_t, unsigned int, DIMS, batch_size, stride_size><<<\
+//           catGrid, applyBlock, 0, stream.stream()>>>(\
+//               data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
+//     }\
+
 #define HANDLE_CASE(DIMS) \
     if (isContig && isAligned && sizeof(scalar_t) > 2 && sizeof(scalar_t) <= 8) {\
-      CatArrayBatchedCopy_alignedK_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_16><<<\
-          catGrid, applyBlock, 0, stream.stream()>>>(\
-              data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
+      auto kernel_to_enqueue = \
+        std::make_unique<CatArrayBatchedCopyAlignedKContig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_16>>( \
+          data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension], catGrid, applyBlock, stream.stream()); \
+      KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue)); \
+      KernelManager::getInstance().launchKernels(); \
     } else if (isContig && isAligned && sizeof(scalar_t) == 2) { \
       CatArrayBatchedCopy_alignedK_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_8><<<\
           catGrid, applyBlock, 0, stream.stream()>>>(\
@@ -432,18 +457,22 @@ void parallel_cat(const Tensor &out, const MaterializedITensorListRef& inputs, i
     }\
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     switch (nDims) {
-      case 1:
+      case 1: {
         HANDLE_CASE(1);
         break;
-      case 2:
+      }
+      case 2: {
         HANDLE_CASE(2);
         break;
-      case 3:
+      }
+      case 3: {
         HANDLE_CASE(3);
         break;
-      case 4:
+      }
+      case 4: {
         HANDLE_CASE(4);
         break;
+      }
     }
 #undef HANDLE_CASE
   }

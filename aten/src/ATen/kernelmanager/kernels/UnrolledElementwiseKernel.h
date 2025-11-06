@@ -1,5 +1,7 @@
 # pragma once
 
+#include "Kernel.h"
+
 #include <c10/core/ScalarType.h>
 #include <c10/cuda/CUDAStream.h>        // at::cuda::CUDAStream
 #include <c10/cuda/CUDAException.h>     // C10_CUDA_KERNEL_LAUNCH_CHECK
