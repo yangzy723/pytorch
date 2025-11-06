@@ -89,9 +89,9 @@ public:
         std::cout << "CatArrayBatchedCopyAlignedKContig: [已入队]" << std::endl;
     }
 
-    void execute() override {
+  void execute() override {
         std::cout << "CatArrayBatchedCopyAlignedKContig: [已准备]" << std::endl;
-        CatArrayBatchedCopy_alignedK_contig<T, IndexType, batch_size, stride_size>
+        CatArrayBatchedCopy_alignedK_contig<T, IndexType, Dims, batch_size, stride_size, aligned_vec_load_bytes>
             <<<catGrid_, applyBlock_, 0, stream_>>>(output_, inputs_, os_, concatDim_, dimStride_);
         std::cout << "CatArrayBatchedCopyAlignedKContig: [已执行]" << std::endl;
 

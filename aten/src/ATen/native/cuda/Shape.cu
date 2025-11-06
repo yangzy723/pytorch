@@ -34,7 +34,8 @@ namespace at::native {
 // constexpr int ALIGNED_VEC_LOAD_BYTES_16 = 16;
 // constexpr int ALIGNED_VEC_LOAD_BYTES_8 = 8;
 
-namespace {
+// Do some changes to make sure the code compiles correctly
+// namespace {
 
 inline bool is_aligned_vec4(const void* ptr) {
   auto iptr = reinterpret_cast<uintptr_t>(ptr);
@@ -443,9 +444,11 @@ void parallel_cat(const Tensor &out, const MaterializedITensorListRef& inputs, i
       KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue)); \
       KernelManager::getInstance().launchKernels(); \
     } else if (isContig && isAligned && sizeof(scalar_t) == 2) { \
-      CatArrayBatchedCopy_alignedK_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_8><<<\
-          catGrid, applyBlock, 0, stream.stream()>>>(\
-              data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
+      auto kernel_to_enqueue = \
+        std::make_unique<CatArrayBatchedCopyAlignedKContig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_8>>( \
+          data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension], catGrid, applyBlock, stream.stream()); \
+      KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue)); \
+      KernelManager::getInstance().launchKernels(); \
     } else if (isContig) {\
       CatArrayBatchedCopy_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size><<<\
           catGrid, applyBlock, 0, stream.stream()>>>(\
@@ -481,7 +484,7 @@ void parallel_cat(const Tensor &out, const MaterializedITensorListRef& inputs, i
 // size to avoid redundant kernels for different types of the same size.
 template <unsigned N> struct alignas(N) OpaqueType { char data[N]; };
 
-} // namespace
+// } // namespace
 
 TORCH_IMPL_FUNC(cat_out_cuda)
 (const ITensorListRef& tensors,
