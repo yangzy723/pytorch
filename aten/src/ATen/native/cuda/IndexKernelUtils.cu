@@ -6,6 +6,10 @@
 #include <ATen/native/cuda/Loops.cuh>
 #include <ATen/ceil_div.h>
 
+#include <ATen/kernelmanager/KernelManager.h>
+#include <ATen/kernelmanager/kernels/VectorizedGatherKernel.h>
+#include <memory> // 包含 std::make_unique
+
 namespace at::native {
 template <int Alignment, typename index_t>
 __global__ void vectorized_gather_kernel(char * out, char * inp, index_t * idx, int num_ind, int64_t slice_size, int64_t ind_dim_size, int64_t inp_stride, int64_t out_stride, bool allow_neg_indices) {
@@ -32,9 +36,19 @@ void vectorized_gather_kernel_launch(char * out, char * inp, index_t * idx, int 
       static_cast<int64_t>(C10_WARP_SIZE));
   dim3 grid = {static_cast<uint32_t>(num_ind), static_cast<uint32_t>(at::ceil_div(slice_size_in_bytes, max_num_threads * Alignment)), 1};
   auto block = std::min(max_num_threads, num_threads);
+
+#ifndef KERNEL_MANAGER
+  auto kernel_to_enqueue = std::make_unique<VectorizedGatherKernel<Alignment, index_t>>
+    (out, inp, idx, num_ind, slice_size_in_bytes, ind_dim_size, inp_stride_bytes, out_stride_bytes, allow_neg_indices, grid, block, at::cuda::getCurrentCUDAStream());
+  KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+  KernelManager::getInstance().launchKernels(); 
+
+#else
   vectorized_gather_kernel<Alignment, index_t><<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(out, inp, idx, num_ind, slice_size_in_bytes,
   ind_dim_size, inp_stride_bytes, out_stride_bytes, allow_neg_indices);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
+
+#endif
 }
 
 // explicit template instantiation

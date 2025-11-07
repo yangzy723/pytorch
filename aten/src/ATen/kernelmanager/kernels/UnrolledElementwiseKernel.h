@@ -8,6 +8,8 @@
 #include <iostream>
 
 
+// Rebuilt-PyTorch/pytorch-v2.8.0/aten/src/ATen/native/cuda/CUDALoops.cuh
+
 namespace at::native {
 
 template <
@@ -59,14 +61,14 @@ public:
         block_unrolled_(block_unrolled),
         stream_(stream)
     {
-        std::cout << "UnrolledElementwiseKernel: [已入队]" << std::endl;
+        // std::cout << "UnrolledElementwiseKernel: [已入队]" << std::endl;
     }
 
     void execute() override {
-        std::cout << "UnrolledElementwiseKernel: [已准备]" << std::endl;
+        // std::cout << "UnrolledElementwiseKernel: [已准备]" << std::endl;
         unrolled_elementwise_kernel<func_t, array_t, elems_per_thread, inp_calc_t, out_calc_t, loader_t, storer_t>
             <<<grid_unrolled_, block_unrolled_, 0, stream_>>>(N_, f_, data_, ic_, oc_, l_, s_);
-        std::cout << "UnrolledElementwiseKernel: [已发送]" << std::endl;
+        // std::cout << "UnrolledElementwiseKernel: [已发送]" << std::endl;
 
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }

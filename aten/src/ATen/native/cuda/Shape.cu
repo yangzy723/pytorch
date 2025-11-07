@@ -416,49 +416,59 @@ void parallel_cat(const Tensor &out, const MaterializedITensorListRef& inputs, i
         dimension--;
       }
     }
-    // Template Declarations for dim = 1, 2, 3, 4
-// #define HANDLE_CASE(DIMS) \
-//     if (isContig && isAligned && sizeof(scalar_t) > 2 && sizeof(scalar_t) <= 8) {\
-//       CatArrayBatchedCopy_alignedK_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_16><<<\
-//           catGrid, applyBlock, 0, stream.stream()>>>(\
-//               data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
-//     } else if (isContig && isAligned && sizeof(scalar_t) == 2) { \
-//       CatArrayBatchedCopy_alignedK_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_8><<<\
-//           catGrid, applyBlock, 0, stream.stream()>>>(\
-//               data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
-//     } else if (isContig) {\
-//       CatArrayBatchedCopy_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size><<<\
-//           catGrid, applyBlock, 0, stream.stream()>>>(\
-//               data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
-//     } else {\
-//       CatArrayBatchedCopy<scalar_t, unsigned int, DIMS, batch_size, stride_size><<<\
-//           catGrid, applyBlock, 0, stream.stream()>>>(\
-//               data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
-//     }\
 
+    // Template Declarations for dim = 1, 2, 3, 4
+#ifndef KERNEL_MANAGER
 #define HANDLE_CASE(DIMS) \
-    if (isContig && isAligned && sizeof(scalar_t) > 2 && sizeof(scalar_t) <= 8) {\
-      auto kernel_to_enqueue = \
-        std::make_unique<CatArrayBatchedCopyAlignedKContig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_16>>( \
-          data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension], catGrid, applyBlock, stream.stream()); \
-      KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue)); \
-      KernelManager::getInstance().launchKernels(); \
+    if (isContig && isAligned && sizeof(scalar_t) > 2 && sizeof(scalar_t) <= 8) { \
+        auto kernel_to_enqueue = std::make_unique<CatArrayBatchedCopyAlignedKContig< \
+            scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_16>>( \
+            data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension], \
+            catGrid, applyBlock, stream.stream()); \
+        KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue)); \
+        KernelManager::getInstance().launchKernels(); \
     } else if (isContig && isAligned && sizeof(scalar_t) == 2) { \
-      auto kernel_to_enqueue = \
-        std::make_unique<CatArrayBatchedCopyAlignedKContig<scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_8>>( \
-          data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension], catGrid, applyBlock, stream.stream()); \
-      KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue)); \
-      KernelManager::getInstance().launchKernels(); \
-    } else if (isContig) {\
-      CatArrayBatchedCopy_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size><<<\
-          catGrid, applyBlock, 0, stream.stream()>>>(\
-              data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
-    } else {\
-      CatArrayBatchedCopy<scalar_t, unsigned int, DIMS, batch_size, stride_size><<<\
-          catGrid, applyBlock, 0, stream.stream()>>>(\
-              data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]);\
-    }\
+        auto kernel_to_enqueue = std::make_unique<CatArrayBatchedCopyAlignedKContig< \
+            scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_8>>( \
+            data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension], \
+            catGrid, applyBlock, stream.stream()); \
+        KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue)); \
+        KernelManager::getInstance().launchKernels(); \
+    } else if (isContig) { \
+        CatArrayBatchedCopy_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size><<< \
+            catGrid, applyBlock, 0, stream.stream()>>>( \
+            data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]); \
+    } else { \
+        CatArrayBatchedCopy<scalar_t, unsigned int, DIMS, batch_size, stride_size><<< \
+            catGrid, applyBlock, 0, stream.stream()>>>( \
+            data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]); \
+    }
+
+#else  // -------------------- no KERNEL_MANAGER --------------------
+#define HANDLE_CASE(DIMS) \
+    if (isContig && isAligned && sizeof(scalar_t) > 2 && sizeof(scalar_t) <= 8) { \
+        CatArrayBatchedCopy_alignedK_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size, \
+            ALIGNED_VEC_LOAD_BYTES_16><<< \
+            catGrid, applyBlock, 0, stream.stream()>>>( \
+            data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]); \
+    } else if (isContig && isAligned && sizeof(scalar_t) == 2) { \
+        CatArrayBatchedCopy_alignedK_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size, \
+            ALIGNED_VEC_LOAD_BYTES_8><<< \
+            catGrid, applyBlock, 0, stream.stream()>>>( \
+            data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]); \
+    } else if (isContig) { \
+        CatArrayBatchedCopy_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size><<< \
+            catGrid, applyBlock, 0, stream.stream()>>>( \
+            data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]); \
+    } else { \
+        CatArrayBatchedCopy<scalar_t, unsigned int, DIMS, batch_size, stride_size><<< \
+            catGrid, applyBlock, 0, stream.stream()>>>( \
+            data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension]); \
+    }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
+
+#endif  // KERNEL_MANAGER
+
     switch (nDims) {
       case 1: {
         HANDLE_CASE(1);

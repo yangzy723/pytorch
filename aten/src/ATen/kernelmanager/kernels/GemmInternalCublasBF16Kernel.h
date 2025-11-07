@@ -9,6 +9,8 @@
 #include <iostream>
 #include <type_traits>              // std::is_same_v
 
+// Rebuilt-PyTorch/pytorch-v2.8.0/aten/src/ATen/cuda/CUDABlas.cpp
+
 // 确保 at::BFloat16 类型可用
 using at::BFloat16;
 
@@ -61,14 +63,14 @@ public:
         compute_type_(compute_type),
         algo_(algo)
     {
-        std::cout << "GemmInternalCublasBF16Kernel: [已入队] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
+        // std::cout << "GemmInternalCublasBF16Kernel: [已入队] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
     }
 
     void execute() override {
         // 设置数学模式 (从原函数移动而来)
         TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle_, cublas_flags_));
 
-        std::cout << "GemmInternalCublasBF16Kernel: [已准备] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
+        // std::cout << "GemmInternalCublasBF16Kernel: [已准备] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
         TORCH_CUDABLAS_CHECK(cublasGemmEx(
             handle_,
             opa_, opb_,
@@ -78,7 +80,7 @@ public:
             Carray_, Ctype_, ldc_,
             compute_type_, algo_
         ));
-        std::cout << "GemmInternalCublasBF16Kernel: [已发送] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
+        // std::cout << "GemmInternalCublasBF16Kernel: [已发送] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
 
         // 恢复默认的数学模式 (从原函数移动而来)
         TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle_, CUBLAS_DEFAULT_MATH));

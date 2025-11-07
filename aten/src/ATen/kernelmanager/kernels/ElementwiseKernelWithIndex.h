@@ -6,6 +6,8 @@
 #include <c10/cuda/CUDAException.h>     // C10_CUDA_KERNEL_LAUNCH_CHECK
 #include <iostream>
 
+// Rebuilt-PyTorch/pytorch-v2.8.0/aten/src/ATen/native/cuda/RangeFactories.cu
+
 namespace at::native {
 
 template<typename index_t, typename func_t>
@@ -28,14 +30,14 @@ public:
         block_(block),
         stream_(stream)
     {
-        std::cout << "ElementwiseKernelWithIndex: [已入队]" << std::endl;
+        // std::cout << "ElementwiseKernelWithIndex: [已入队]" << std::endl;
     }
     
     void execute() override {
-        std::cout << "ElementwiseKernelWithIndex: [已准备]" << std::endl;
+        // std::cout << "ElementwiseKernelWithIndex: [已准备]" << std::endl;
         elementwise_kernel_with_index<index_t>
             <<<grid_, block_, 0, stream_>>>(N_, f_, data_);
-        std::cout << "ElementwiseKernelWithIndex: [已执行]" << std::endl;
+        // std::cout << "ElementwiseKernelWithIndex: [已执行]" << std::endl;
 
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }

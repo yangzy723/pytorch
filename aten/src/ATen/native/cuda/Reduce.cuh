@@ -19,6 +19,10 @@
 
 #include <ATen/native/cuda/jit_utils.h>
 
+#include <ATen/kernelmanager/KernelManager.h>
+#include <ATen/kernelmanager/kernels/ReduceKernel.h>
+#include <memory> // 包含 std::make_unique
+
 namespace at::native {
 
 static inline int64_t div_up(int64_t a, int64_t b) {
@@ -878,20 +882,40 @@ static void launch_reduce_kernel(const ReduceConfig& config, const R& reduction)
 
   auto stream = at::cuda::getCurrentCUDAStream();
   int shared_memory = config.shared_memory_size();
-
+  // KERNEL HOOKED
+#ifndef KERNEL_MANAGER
+  switch(config.output_vec_size) {
+  case 4: {
+    auto kernel_to_enqueue = std::make_unique<ReduceKernel<max_threads / 4, 4, R>>(reduction, grid, block, shared_memory, stream);
+    KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+    KernelManager::getInstance().launchKernels(); 
+    break;
+  }
+  case 2: {
+    auto kernel_to_enqueue = std::make_unique<ReduceKernel<max_threads / 2, 2, R>>(reduction, grid, block, shared_memory, stream);
+    KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+    KernelManager::getInstance().launchKernels(); 
+    break;
+  }
+  default: {
+    auto kernel_to_enqueue = std::make_unique<ReduceKernel<max_threads / 1, 1, R>>(reduction, grid, block, shared_memory, stream);
+    KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+    KernelManager::getInstance().launchKernels(); 
+  }
+  }
+#else
   switch(config.output_vec_size) {
   case 4:
     reduce_kernel<max_threads / 4, 4, R><<<grid, block, shared_memory, stream>>>(reduction);
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
     break;
   case 2:
     reduce_kernel<max_threads / 2, 2, R><<<grid, block, shared_memory, stream>>>(reduction);
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
     break;
   default:
     reduce_kernel<max_threads / 1, 1, R><<<grid, block, shared_memory, stream>>>(reduction);
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
   }
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+#endif
 }
 
 inline void launch_jitted_reduce_kernel(

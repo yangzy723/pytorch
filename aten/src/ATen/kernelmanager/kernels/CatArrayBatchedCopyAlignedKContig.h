@@ -6,6 +6,8 @@
 #include <cuda_runtime_api.h>
 #include <iostream>
 
+// Rebuilt-PyTorch/pytorch-v2.8.0/aten/src/ATen/native/cuda/Shape.cu
+
 namespace at::native {
 
 constexpr int CAT_ARRAY_BATCH_SIZE = 128;
@@ -86,14 +88,14 @@ public:
         applyBlock_(applyBlock),
         stream_(stream)
     {
-        std::cout << "CatArrayBatchedCopyAlignedKContig: [已入队]" << std::endl;
+        // std::cout << "CatArrayBatchedCopyAlignedKContig: [已入队]" << std::endl;
     }
 
   void execute() override {
-        std::cout << "CatArrayBatchedCopyAlignedKContig: [已准备]" << std::endl;
+        // std::cout << "CatArrayBatchedCopyAlignedKContig: [已准备]" << std::endl;
         CatArrayBatchedCopy_alignedK_contig<T, IndexType, Dims, batch_size, stride_size, aligned_vec_load_bytes>
             <<<catGrid_, applyBlock_, 0, stream_>>>(output_, inputs_, os_, concatDim_, dimStride_);
-        std::cout << "CatArrayBatchedCopyAlignedKContig: [已执行]" << std::endl;
+        // std::cout << "CatArrayBatchedCopyAlignedKContig: [已执行]" << std::endl;
 
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
