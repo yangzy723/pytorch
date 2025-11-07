@@ -418,7 +418,7 @@ void parallel_cat(const Tensor &out, const MaterializedITensorListRef& inputs, i
     }
 
     // Template Declarations for dim = 1, 2, 3, 4
-#ifndef KERNEL_MANAGER
+#ifndef NATIVE
 #define HANDLE_CASE(DIMS) \
     if (isContig && isAligned && sizeof(scalar_t) > 2 && sizeof(scalar_t) <= 8) { \
         auto kernel_to_enqueue = std::make_unique<CatArrayBatchedCopyAlignedKContig< \
@@ -426,14 +426,12 @@ void parallel_cat(const Tensor &out, const MaterializedITensorListRef& inputs, i
             data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension], \
             catGrid, applyBlock, stream.stream()); \
         KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue)); \
-        KernelManager::getInstance().launchKernels(); \
     } else if (isContig && isAligned && sizeof(scalar_t) == 2) { \
         auto kernel_to_enqueue = std::make_unique<CatArrayBatchedCopyAlignedKContig< \
             scalar_t, unsigned int, DIMS, batch_size, stride_size, ALIGNED_VEC_LOAD_BYTES_8>>( \
             data, catMetaData, outputParam, dimension, outputParam.tensorStride[dimension], \
             catGrid, applyBlock, stream.stream()); \
         KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue)); \
-        KernelManager::getInstance().launchKernels(); \
     } else if (isContig) { \
         CatArrayBatchedCopy_contig<scalar_t, unsigned int, DIMS, batch_size, stride_size><<< \
             catGrid, applyBlock, 0, stream.stream()>>>( \
@@ -467,7 +465,7 @@ void parallel_cat(const Tensor &out, const MaterializedITensorListRef& inputs, i
     }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
 
-#endif  // KERNEL_MANAGER
+#endif  // NATIVE
 
     switch (nDims) {
       case 1: {

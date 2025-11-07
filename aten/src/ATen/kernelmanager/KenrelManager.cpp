@@ -40,6 +40,7 @@ void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
     // 3. 唤醒一个正在等待的线程
     // (即工作线程，如果它正在休眠)
     // cv_.notify_one();
+    launchKernels();
 }
 
 void KernelManager::launchKernels() {

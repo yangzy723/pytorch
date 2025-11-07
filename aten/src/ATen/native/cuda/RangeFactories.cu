@@ -62,21 +62,26 @@ void gpu_kernel_with_index(at::Tensor &output, func_t f) {
   auto stream = at::cuda::getCurrentCUDAStream();
   using scalar_t = typename function_traits<func_t>::result_type;
   if (N <= std::numeric_limits<int>::max()) {
+
+#ifndef NATIVE
     auto kernel_to_enqueue = 
       std::make_unique<ElementwiseKernelWithIndex<int, func_t>>(
         N, f, output.mutable_data_ptr<scalar_t>(), grid, num_threads(), stream);
     KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
-    KernelManager::getInstance().launchKernels();
-    // elementwise_kernel_with_index<int><<<grid, num_threads(), 0, stream>>>(N, f, output.mutable_data_ptr<scalar_t>());
-    // C10_CUDA_KERNEL_LAUNCH_CHECK();
+#else
+    elementwise_kernel_with_index<int><<<grid, num_threads(), 0, stream>>>(N, f, output.mutable_data_ptr<scalar_t>());
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+#endif
   } else {
+#ifndef NATIVE
     auto kernel_to_enqueue = 
       std::make_unique<ElementwiseKernelWithIndex<int64_t, func_t>>(
         N, f, output.mutable_data_ptr<scalar_t>(), grid, num_threads(), stream);
     KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
-    KernelManager::getInstance().launchKernels();
-    // elementwise_kernel_with_index<int64_t><<<grid, num_threads(), 0, stream>>>(N, f, output.mutable_data_ptr<scalar_t>());
-    // C10_CUDA_KERNEL_LAUNCH_CHECK();
+#else
+    elementwise_kernel_with_index<int64_t><<<grid, num_threads(), 0, stream>>>(N, f, output.mutable_data_ptr<scalar_t>());
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+#endif
   }
 }
 

@@ -882,25 +882,21 @@ static void launch_reduce_kernel(const ReduceConfig& config, const R& reduction)
 
   auto stream = at::cuda::getCurrentCUDAStream();
   int shared_memory = config.shared_memory_size();
-  // KERNEL HOOKED
-#ifndef KERNEL_MANAGER
+#ifndef NATIVE
   switch(config.output_vec_size) {
   case 4: {
     auto kernel_to_enqueue = std::make_unique<ReduceKernel<max_threads / 4, 4, R>>(reduction, grid, block, shared_memory, stream);
     KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
-    KernelManager::getInstance().launchKernels(); 
     break;
   }
   case 2: {
     auto kernel_to_enqueue = std::make_unique<ReduceKernel<max_threads / 2, 2, R>>(reduction, grid, block, shared_memory, stream);
     KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
-    KernelManager::getInstance().launchKernels(); 
     break;
   }
   default: {
     auto kernel_to_enqueue = std::make_unique<ReduceKernel<max_threads / 1, 1, R>>(reduction, grid, block, shared_memory, stream);
     KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
-    KernelManager::getInstance().launchKernels(); 
   }
   }
 #else

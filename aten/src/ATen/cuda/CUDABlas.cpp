@@ -1221,8 +1221,7 @@ inline void gemm_internal_cublas_bfloat16_helper(CUDABLAS_GEMM_ARGTYPES_AND_C_DT
   auto compute_type = CUDA_R_32F;
 #endif
 
-  // // KERNEL HOOKED
-  // printf("gemm_internal_cublas_bfloat16_helper: m=%ld, n=%ld, k=%ld, lda=%ld, ldb=%ld, ldc=%ld\n", m, n, k, lda, ldb, ldc);
+#ifndef NATIVE
   auto kernel_to_enqueue = std::make_unique<GemmInternalCublasBF16Kernel>(
       handle,
       cublas_flags,
@@ -1234,30 +1233,30 @@ inline void gemm_internal_cublas_bfloat16_helper(CUDABLAS_GEMM_ARGTYPES_AND_C_DT
       compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP
   );
   KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
-  KernelManager::getInstance().launchKernels();
-
-  // TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, cublas_flags));
-  // TORCH_CUDABLAS_CHECK(cublasGemmEx(
-  //     handle,
-  //     opa,
-  //     opb,
-  //     m,
-  //     n,
-  //     k,
-  //     &falpha,
-  //     a,
-  //     CUDA_R_16BF,
-  //     lda,
-  //     b,
-  //     CUDA_R_16BF,
-  //     ldb,
-  //     &fbeta,
-  //     c,
-  //     std::is_same_v<C_Dtype, float> ? CUDA_R_32F : CUDA_R_16BF,
-  //     ldc,
-  //     compute_type,
-  //     CUBLAS_GEMM_DEFAULT_TENSOR_OP));
-  // TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, CUBLAS_DEFAULT_MATH));
+#else
+  TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, cublas_flags));
+  TORCH_CUDABLAS_CHECK(cublasGemmEx(
+      handle,
+      opa,
+      opb,
+      m,
+      n,
+      k,
+      &falpha,
+      a,
+      CUDA_R_16BF,
+      lda,
+      b,
+      CUDA_R_16BF,
+      ldb,
+      &fbeta,
+      c,
+      std::is_same_v<C_Dtype, float> ? CUDA_R_32F : CUDA_R_16BF,
+      ldc,
+      compute_type,
+      CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+  TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, CUBLAS_DEFAULT_MATH));
+#endif
 }
 
 template <>
