@@ -6,6 +6,7 @@
 #include <c10/cuda/CUDAStream.h>        // at::cuda::CUDAStream
 #include <c10/cuda/CUDAException.h>     // C10_CUDA_KERNEL_LAUNCH_CHECK
 #include <iostream>
+#include <cxxabi.h>
 
 // Rebuilt-PyTorch/pytorch-v2.8.0/aten/src/ATen/native/cuda/IndexKernel.cu
 
@@ -30,6 +31,7 @@ public:
         stream_(stream)
     {
         // std::cout << "IndexElementwiseKernel: [已入队]" << std::endl;
+        // print_type_name<func_t>();
     }
 
     void execute() override {
@@ -40,11 +42,20 @@ public:
     }
 
 private:
+
     const int64_t N_;
     const func_t& f_;
     const dim3 grid_;
     const dim3 block_;
     const at::cuda::CUDAStream stream_;
+
+    template <typename T>
+    void print_type_name() {
+        int status;
+        char* realname = abi::__cxa_demangle(typeid(T).name(), 0, 0, &status);
+        std::cout << "func_t = " << realname << std::endl;
+        free(realname);
+    }
 };
 
 }

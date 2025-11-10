@@ -6,6 +6,7 @@
 #include <c10/cuda/CUDAStream.h>        // at::cuda::CUDAStream
 #include <c10/cuda/CUDAException.h>     // C10_CUDA_KERNEL_LAUNCH_CHECK
 #include <iostream>
+#include <cxxabi.h>
 
 // Rebuilt-PyTorch/pytorch-v2.8.0/aten/src/ATen/native/cuda/CUDALoops.cuh
 
@@ -32,6 +33,7 @@ public:
         stream_(stream)
     {
         // std::cout << "VectorizedElementwiseKernel: [已入队]" << std::endl;
+        // print_type_name<func_t>();
     }
 
     void execute() override {
@@ -49,6 +51,14 @@ private:
     int64_t grid_;
     int64_t block_;
     at::cuda::CUDAStream stream_;
+
+    template <typename T>
+    void print_type_name() {
+        int status;
+        char* realname = abi::__cxa_demangle(typeid(T).name(), 0, 0, &status);
+        std::cout << "func_t = " << realname << std::endl;
+        free(realname);
+    }
 };
 
 }
