@@ -1,122 +1,165 @@
 #include "KernelManager.h"
+#include "IPCProtocol.h" // 假设这个文件定义了 PORT 和 HOST
 
-#include <iostream> // 用于打印日志 (可选)
+#include <iostream>
+#include <sstream>
+#include <vector>
+#include <cstring>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+#include <typeinfo>       // 用于 typeid
+#include <cxxabi.h>       // 用于 __cxa_demangle (GCC/Clang)
+#include <memory>         // 用于 std::free
+#include <cctype>
+
+// --- 静态辅助函数  ---
+
+namespace { // 使用匿名命名空间将它们限制在此文件
+
+// 获取内核的 demangled (可读) 核心名称
+std::string getClassName(const Kernel& kernel) {
+    const char* mangledName = typeid(kernel).name();
+    int status = 0;
+
+    std::unique_ptr<char, void(*)(void*)> res {
+        abi::__cxa_demangle(mangledName, nullptr, nullptr, &status),
+        std::free
+    };
+    std::string demangledName = (status == 0 && res) ? res.get() : mangledName;
+
+    size_t bracket_pos = demangledName.find_first_of("<(");
+    std::string baseName = (bracket_pos != std::string::npos)
+                             ? demangledName.substr(0, bracket_pos)
+                             : demangledName;
+
+    size_t ns_pos = baseName.rfind("::");
+    if (ns_pos != std::string::npos) {
+        return baseName.substr(ns_pos + 2); // 跳过两个字符 '::'
+    }
+
+    if (!baseName.empty() && !std::isalpha(static_cast<unsigned char>(baseName[0]))) {
+        return baseName.substr(1);
+    }
+    return baseName;
+}
+
+std::vector<std::string> split_client(const std::string& s, char delimiter) {
+    std::vector<std::string> tokens;
+    std::string token;
+    std::istringstream tokenStream(s);
+    while (std::getline(tokenStream, token, delimiter)) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
+
+} // 匿名命名空间结束
 
 // --- Singleton ---
 KernelManager& KernelManager::getInstance() {
-    // C++11 保证了静态局部变量的初始化是线程安全的
     static KernelManager instance;
     return instance;
 }
 
 // --- 构造函数 ---
-KernelManager::KernelManager() : stop_(false) {
-    // 启动工作线程，workerLoop 将成为新线程的入口点
-    // workerThread_ = std::thread(&KernelManager::workerLoop, this);
-    // std::cout << "[KernelManager] 工作线程已启动。" << std::endl; // 可以取消注释以进行调试
+// 在构造时建立连接
+KernelManager::KernelManager() : sock_(-1), requestIdCounter_(0) {
+    printf("aaa\n");
+    connectToScheduler();
+    std::cout << "[KernelManager] 已初始化并连接到调度器。" << std::endl;
 }
 
 // --- 析构函数 ---
+// 在析构时关闭连接
 KernelManager::~KernelManager() {
-    // std::cout << "[KernelManager] 准备关闭..." << std::endl; // 可以取消注释以进行调试
-    shutdown();
-    // std::cout << "[KernelManager] 已关闭。" << std::endl; // 可以取消注释以进行调试
+    if (sock_ != -1) {
+        close(sock_);
+        std::cout << "[KernelManager] 已关闭与调度器的连接。" << std::endl;
+    }
+}
+
+// --- 私有辅助方法 ---
+
+void KernelManager::connectToScheduler() {
+    struct sockaddr_in serv_addr;
+
+    if ((sock_ = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        std::cerr << "[KernelManager] Socket 创建失败" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(SCHEDULER_PORT);
+
+    if (inet_pton(AF_INET, LOCALHOST, &serv_addr.sin_addr) <= 0) {
+        std::cerr << "[KernelManager] 无效的地址 / 不支持的地址" << std::endl;
+        close(sock_);
+        exit(EXIT_FAILURE);
+    }
+
+    if (connect(sock_, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        std::cerr << "[KernelManager] 连接失败！调度器进程是否已启动？" << std::endl;
+        close(sock_);
+        exit(EXIT_FAILURE);
+    }
+
+    std::cout << "[KernelManager] 成功连接到调度器。" << std::endl;
+}
+
+std::string KernelManager::generateRequestID() {
+    uint64_t id = ++requestIdCounter_;
+    std::stringstream ss;
+    ss << "req_" << id;
+    return ss.str();
 }
 
 // --- Public 方法 ---
+
 void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
-    {
-        // 1. 获取互斥锁，保护队列
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        
-        // 2. 将内核推入队列
-        kernelQueue_.push(std::move(kernel));
-        
-        // (调试信息)
-        // std::cout << "[KernelManager] 内核已入队。队列大小: " << kernelQueue_.size() << std::endl;
-    
-    } // 互斥锁在此处自动释放
 
-    // 3. 唤醒一个正在等待的线程
-    // (即工作线程，如果它正在休眠)
-    // cv_.notify_one();
-    launchKernels();
-}
+    std::string reqId = generateRequestID();
+    std::string kernelType = getClassName(*kernel);
+    std::string requestMessage = createRequestMessage(reqId, kernelType);
+    // std::cout << "[KernelManager] 准备提交 (ID: " << reqId << "): " << kernelType << std::endl;
 
-void KernelManager::launchKernels() {
-    while (!kernelQueue_.empty()) {
-        std::unique_ptr<Kernel> kernelToExecute = std::move(kernelQueue_.front());
-        kernelQueue_.pop();
-        kernelToExecute->execute();
-    }
-}
-
-void KernelManager::shutdown() {
-    // 1. 设置停止标志
-    // 使用 exchange 来确保我们只关闭一次
-    if (stop_.exchange(true)) {
-        // 如果已经停止了，就不要再执行了
+    // std::cout << "[KernelManager] (ID: " << reqId << ") 发送请求..." << std::endl;
+    if (send(sock_, requestMessage.c_str(), requestMessage.length(), 0) < 0) {
+        std::cerr << "[KernelManager] (ID: " << reqId << ") 发送失败！连接可能已断开。" << std::endl;
         return;
     }
 
-    // 2. 唤醒工作线程，以便它可以检查 stop_ 标志并退出
-    cv_.notify_one();
-
-    // 3. 等待工作线程执行完毕
-    if (workerThread_.joinable()) {
-        workerThread_.join();
+    // std::cout << "[KernelManager] (ID: " << reqId << ") 正在等待调度器批准..." << std::endl;
+    char buffer[1024] = {0};
+    ssize_t bytesRead = read(sock_, buffer, 1023);
+   
+    if (bytesRead <= 0) {
+        std::cerr << "[KernelManager] (ID: " << reqId << ") 从服务器读取响应失败。连接已断开。" << std::endl;
+        return;
     }
-}
 
-// --- Private 方法 ---
-void KernelManager::workerLoop() {
-    // 线程循环，直到 stop_ 为 true 且队列为空
-    while (true) {
-        std::unique_ptr<Kernel> kernelToExecute;
+    std::string responseMessage(buffer, bytesRead);
+    responseMessage.erase(responseMessage.find_last_not_of("\r\n") + 1);
+    
+    auto parts = split_client(responseMessage, '|');
+    if (parts.size() != 3 || parts[0] != reqId) {
+        std::cerr << "[KernelManager] (ID: " << reqId << ") 收到格式错误的响应: " << responseMessage << std::endl;
+        return;
+    }
 
-        {
-            // 1. 上锁，准备检查队列
-            std::unique_lock<std::mutex> lock(queueMutex_);
-
-            // 2. 等待
-            // 线程将在此处休眠，直到...
-            // 2a. 队列不为空 (kernelQueue_.empty() == false)
-            // 2b. stop_ 为 true
-            // ... 满足任一条件
-            cv_.wait(lock, [this] {
-                return !kernelQueue_.empty() || stop_.load();
-            });
-
-            // 3. 检查退出条件
-            // 如果被唤醒是因为 'stop_' 且队列已空，则退出循环
-            if (stop_.load() && kernelQueue_.empty()) {
-                return; // 退出线程
-            }
-
-            // 4. 如果队列不为空，则取出任务
-            if (!kernelQueue_.empty()) {
-                kernelToExecute = std::move(kernelQueue_.front());
-                kernelQueue_.pop();
-            }
-        
-        } // 锁在此处释放
-
-        // 5. 执行任务 (如果成功取出了任务)
-        // *** 重要的是：在锁之外执行 ***
-        // 这样可以避免在执行一个耗时任务时阻塞其他线程的入队操作。
-        if (kernelToExecute) {
-            try {
-                // (调试信息)
-                // std::cout << "[KernelManager] 正在执行内核..." << std::endl;
-                kernelToExecute->execute();
-                // std::cout << "[KernelManager] 内核执行完毕。" << std::endl;
-            } catch (const std::exception& e) {
-                // 捕获并报告异常，防止工作线程崩溃
-                std::cerr << "[KernelManager] 执行内核时捕获到异常: " << e.what() << std::endl;
-            } catch (...) {
-                // 捕获所有其他类型的异常
-                std::cerr << "[KernelManager] 执行内核时捕获到未知异常。" << std::endl;
-            }
+    bool permissionGranted = (parts[1] == "1");
+    std::string reason = parts[2];
+    if (permissionGranted) {
+        // std::cout << "[KernelManager] (ID: " << reqId << ") 批准！正在执行内核..." << std::endl;
+        try {
+            kernel->execute(); 
+            // std::cout << "[KernelManager] (ID: " << reqId << ") 内核执行完毕。" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[KernelManager] (ID: " << reqId << ") 执行时异常: " << e.what() << std::endl;
         }
+    } else {
+        std::cerr << "[KernelManager] (ID: " << reqId << ") 内核被拒绝！原因: " << reason << std::endl;
     }
 }

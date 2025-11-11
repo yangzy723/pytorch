@@ -42,18 +42,18 @@ public:
         block_(block),
         stream_(stream)
     {
-        std::cout << "VectorizedGatherKernel: [已入队]" << std::endl;
+        // std::cout << "VectorizedGatherKernel: [已入队]" << std::endl;
     }
 
     void execute() override{
-        std::cout << "VectorizedGatherKernel: [已准备]" << std::endl;
+        // std::cout << "VectorizedGatherKernel: [已准备]" << std::endl;
         
         vectorized_gather_kernel<Alignment, index_t>
             <<<grid_, block_, 0, stream_>>>
                 (out_, inp_, idx_, num_ind_, slice_size_, ind_dim_size_, inp_stride_, out_stride_, allow_neg_indices_);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
 
-        std::cout << "VectorizedGatherKernel: [已发送]" << std::endl;
+        // std::cout << "VectorizedGatherKernel: [已发送]" << std::endl;
     }
 
 private:

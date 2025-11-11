@@ -56,7 +56,6 @@ static void launch_kernel(const int64_t N, const func_t& f) {
 #ifndef NATIVE
   auto kernel_to_enqueue = std::make_unique<IndexElementwiseKernel<nt, vt, func_t>>(N, f, grid, block, stream);
   KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
-  KernelManager::getInstance().launchKernels();
 #else
   index_elementwise_kernel<nt, vt, func_t><<<grid, block, 0, stream>>>(N, f);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
