@@ -46,6 +46,10 @@
 
 #include <c10/macros/Macros.h>
 
+#include <ATen/kernelmanager/KernelManager.h>
+#include <ATen/kernelmanager/kernels/IndexSelectSmallIndex.h>
+#include <memory> // 包含 std::make_unique
+
 namespace {
 constexpr uint64_t getDefaultMaxThreadsPerBlock() {
 #ifndef USE_ROCM
@@ -1452,7 +1456,9 @@ TORCH_IMPL_FUNC(index_reduce_cuda_out)
   }
 }
 
-namespace {
+// New: Remove the kernel(indexSelectSmallIndex) from the anonymous space
+// namespace {
+
 // We prefer this kernel to avoid reloading index points if the number
 // of indices is a small number.
 // This kernel in fact works for all choices of problem size, but if
@@ -1495,6 +1501,8 @@ __global__ void indexSelectSmallIndex(cuda::detail::TensorInfo<T, IndexType> dst
   }
 }
 
+// New: Remove the kernel(indexSelectSmallIndex) from the anonymous space
+namespace {
 
 namespace {
 
@@ -1594,6 +1602,30 @@ void index_select_out_cuda_impl(
 
       // A reasonable choice for when to have each thread iterate over
       // indices to choose
+      
+# ifndef NATIVE
+      if (outInfo.dims == 1 && selfInfo.dims == 1 && indContig) {
+        auto kernel_to_enqueue = std::make_unique<IndexSelectSmallIndex<scalar_t, index_t, unsigned int, 1, 1, -2>>
+          (outInfo, selfInfo, indicesInfo, outSelectDim, selfSelectDim, static_cast<unsigned int>(sliceSize), selfSelectDimSize,
+            smallIndexGrid, smallIndexBlock, stream);
+        KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+      } else if (outInfo.dims == 2 && selfInfo.dims == 2 && indContig) {
+        auto kernel_to_enqueue = std::make_unique<IndexSelectSmallIndex<scalar_t, index_t, unsigned int, 2, 2, -2>>
+          (outInfo, selfInfo, indicesInfo, outSelectDim, selfSelectDim, static_cast<unsigned int>(sliceSize), selfSelectDimSize,
+            smallIndexGrid, smallIndexBlock, stream);
+        KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+      } else if (outInfo.dims == 3 && selfInfo.dims == 3 && indContig) {
+        auto kernel_to_enqueue = std::make_unique<IndexSelectSmallIndex<scalar_t, index_t, unsigned int, 3, 3, -2>>
+          (outInfo, selfInfo, indicesInfo, outSelectDim, selfSelectDim, static_cast<unsigned int>(sliceSize), selfSelectDimSize,
+            smallIndexGrid, smallIndexBlock, stream);
+        KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+      } else {
+        auto kernel_to_enqueue = std::make_unique<IndexSelectSmallIndex<scalar_t, index_t, unsigned int, -1, -1, -2>>
+          (outInfo, selfInfo, indicesInfo, outSelectDim, selfSelectDim, static_cast<unsigned int>(sliceSize), selfSelectDimSize,
+            smallIndexGrid, smallIndexBlock, stream);
+        KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+      }  
+#else
       if (outInfo.dims == 1 && selfInfo.dims == 1 && indContig) {
         SMALL_INDEX(scalar_t, index_t, unsigned int, 1, 1, -2);
       } else if (outInfo.dims == 2 && selfInfo.dims == 2 && indContig) {
@@ -1603,6 +1635,8 @@ void index_select_out_cuda_impl(
       } else {
         SMALL_INDEX(scalar_t, index_t, unsigned int, -1, -1, -1);
       }
+#endif
+
     });
   } else {
     std::vector<int64_t> tmpSize(newSize.size(), 1);

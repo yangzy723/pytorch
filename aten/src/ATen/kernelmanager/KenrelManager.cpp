@@ -67,7 +67,6 @@ KernelManager& KernelManager::getInstance() {
 // --- 构造函数 ---
 // 在构造时建立连接
 KernelManager::KernelManager() : sock_(-1), requestIdCounter_(0) {
-    printf("aaa\n");
     connectToScheduler();
     std::cout << "[KernelManager] 已初始化并连接到调度器。" << std::endl;
 }
