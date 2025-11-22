@@ -21,7 +21,7 @@ using at::BFloat16;
  * 它的目的是捕获 `gemm_internal_cublas_bfloat16_helper` 函数中
  * 的所有必要参数，以便稍后在 `execute()` 方法中执行它。
  */
-class GemmInternalCublasBF16Kernel: public Kernel {
+class GemmInternalCublas: public Kernel {
 public:
     /**
      * @brief 构造函数，捕获 cublasGemmEx 调用所需的所有状态。
@@ -42,7 +42,7 @@ public:
      * @param compute_type cublas 的计算类型
      * @param cublas_flags cublas 的数学模式标志
      */
-    GemmInternalCublasBF16Kernel(
+    GemmInternalCublas(
         cublasHandle_t handle,
         cublasMath_t cublas_flags,
         cublasOperation_t opa,
@@ -63,14 +63,14 @@ public:
         compute_type_(compute_type),
         algo_(algo)
     {
-        // std::cout << "GemmInternalCublasBF16Kernel: [已入队] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
+        // std::cout << "GemmInternalCublas: [已入队] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
     }
 
     void execute() override {
         // 设置数学模式 (从原函数移动而来)
         TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle_, cublas_flags_));
 
-        // std::cout << "GemmInternalCublasBF16Kernel: [已准备] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
+        // std::cout << "GemmInternalCublas: [已准备] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
         TORCH_CUDABLAS_CHECK(cublasGemmEx(
             handle_,
             opa_, opb_,
@@ -80,7 +80,7 @@ public:
             Carray_, Ctype_, ldc_,
             compute_type_, algo_
         ));
-        // std::cout << "GemmInternalCublasBF16Kernel: [已发送] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
+        // std::cout << "GemmInternalCublas: [已发送] m=" << m_ << ", n=" << n_ << ", k=" << k_ << std::endl;
 
         // 恢复默认的数学模式 (从原函数移动而来)
         TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle_, CUBLAS_DEFAULT_MATH));

@@ -17,7 +17,7 @@
 #include <c10/core/ScalarType.h>
 
 #include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/GemmInternalCublasBF16Kernel.h>
+#include <ATen/kernelmanager/kernels/GemmInternalCublas.h>
 #include <memory> // 包含 std::make_unique
 
 #ifdef USE_ROCM
@@ -1152,9 +1152,22 @@ inline void gemm_internal_cublas_half_helper(CUDABLAS_GEMM_ARGTYPES_AND_C_DTYPE(
     if (!at::globalContext().allowFP16ReductionCuBLAS()) {
       cublas_flags = static_cast<cublasMath_t>(cublas_flags | CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION);
     }
+
+#ifndef NATIVE
+    auto kernel_to_enqueue = std::make_unique<GemmInternalCublas>(
+      handle,
+      cublas_flags,
+      opa, opb,
+      m, n, k,
+      (void *)alpha_ptr, (void *)a, CUDA_R_16F, lda,
+      (void *)b, CUDA_R_16F, ldb, (void *)beta_ptr,
+      (void *)c, std::is_same_v<C_Dtype, float> ? CUDA_R_32F : CUDA_R_16F, ldc,
+      compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP
+    );
+    KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+#else
     // Disallow fp16 reductions that could lead to unexpected overflow issues.
     TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, cublas_flags));
-    // 这里也没用
     TORCH_CUDABLAS_CHECK(cublasGemmEx(
         handle,
         opa,
@@ -1176,6 +1189,8 @@ inline void gemm_internal_cublas_half_helper(CUDABLAS_GEMM_ARGTYPES_AND_C_DTYPE(
         compute_type,
         CUBLAS_GEMM_DEFAULT_TENSOR_OP));
     TORCH_CUDABLAS_CHECK(cublasSetMathMode(handle, CUBLAS_DEFAULT_MATH));
+  #endif
+
   } else {
     TORCH_CUDABLAS_CHECK(cublasSgemmEx(
         handle,
@@ -1222,7 +1237,7 @@ inline void gemm_internal_cublas_bfloat16_helper(CUDABLAS_GEMM_ARGTYPES_AND_C_DT
 #endif
 
 #ifndef NATIVE
-  auto kernel_to_enqueue = std::make_unique<GemmInternalCublasBF16Kernel>(
+  auto kernel_to_enqueue = std::make_unique<GemmInternalCublas>(
       handle,
       cublas_flags,
       opa, opb,
@@ -1708,7 +1723,7 @@ bool gemm_and_bias(
     cublasStatus = CUBLAS_STATUS_NOT_SUPPORTED;
   }
   else {
-    // 这里 HOOKED 没用
+    // No here
     cublasStatus = cublasLtMatmul(
       ltHandle,
       computeDesc.descriptor(),
@@ -2029,8 +2044,7 @@ void scaled_gemm(
     TORCH_CHECK(found, "could not find valid hipblaslt solution");
 #endif // ifndef USE_ROCM
   }
-  // 不在这里
-  // printf("cublasLtMatmul\n");
+  // No here
   cublasStatus_t cublasStatus = cublasLtMatmul(
       ltHandle,
       computeDesc.descriptor(),
@@ -2146,8 +2160,7 @@ void int8_gemm(
     TORCH_CUDABLAS_CHECK(CUBLAS_STATUS_NOT_SUPPORTED);
   }
 #endif
-  // 不在这里
-  // printf("cublasLtMatmul int8\n");
+  // No here
   cublasStatus_t cublasStatus = cublasLtMatmul(
       ltHandle,
       computeDesc.descriptor(),

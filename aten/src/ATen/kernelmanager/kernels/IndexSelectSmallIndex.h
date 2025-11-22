@@ -43,7 +43,7 @@ public:
         smallIndexBlock_(smallIndexBlock),
         stream_(stream)
     {
-        std::cout << "IndexSelectSmallIndex: [已入队]" << std::endl;
+        // std::cout << "IndexSelectSmallIndex: [已入队]" << std::endl;
     }
 
     void execute() override {

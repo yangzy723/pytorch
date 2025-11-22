@@ -43,6 +43,7 @@
 #include <ATen/kernelmanager/KernelManager.h>
 #include <ATen/kernelmanager/kernels/VectorizedElementwiseKernel.h>
 #include <ATen/kernelmanager/kernels/UnrolledElementwiseKernel.h>
+#include <ATen/kernelmanager/kernels/ElementwiseKernel.h>
 #include <memory> // 包含 std::make_unique
 
 #ifdef __NVCC__
@@ -606,8 +607,15 @@ static void launch_legacy_kernel(int64_t N, const func_t& f) {
   dim3 block(nt);
   dim3 grid((N + block.x * vt - 1) / (block.x * vt));
   auto stream = at::cuda::getCurrentCUDAStream();
+
+#ifndef NATIVE
+  auto kernel_to_enqueue = std::make_unique<ElementwiseKernel<nt, vt, func_t>>(N, f, grid, block, stream);
+  KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+#else
   elementwise_kernel<nt, vt, func_t><<<grid, block, 0, stream>>>(N, f);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
+#endif
+
 }
 
 #ifdef USE_ROCM
