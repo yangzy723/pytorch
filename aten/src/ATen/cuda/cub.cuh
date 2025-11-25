@@ -34,14 +34,18 @@
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <c10/cuda/CUDAStream.h>
 
-// handle the temporary storage and 'twice' calls for cub API
-#define CUB_WRAPPER(func, ...) do {                                       \
-  size_t temp_storage_bytes = 0;                                          \
-  AT_CUDA_CHECK(func(nullptr, temp_storage_bytes, __VA_ARGS__));          \
-  auto& caching_allocator = *::c10::cuda::CUDACachingAllocator::get();    \
-  auto temp_storage = caching_allocator.allocate(temp_storage_bytes);     \
-  AT_CUDA_CHECK(func(temp_storage.get(), temp_storage_bytes, __VA_ARGS__));\
-} while (false)
+#include <ATen/kernelmanager/KernelManager.h>
+#include <ATen/kernelmanager/kernels/InclusiveScan.h>
+#include <memory> // 包含 std::make_unique
+
+// // handle the temporary storage and 'twice' calls for cub API
+// #define CUB_WRAPPER(func, ...) do {                                       \
+//   size_t temp_storage_bytes = 0;                                          \
+//   AT_CUDA_CHECK(func(nullptr, temp_storage_bytes, __VA_ARGS__));          \
+//   auto& caching_allocator = *::c10::cuda::CUDACachingAllocator::get();    \
+//   auto temp_storage = caching_allocator.allocate(temp_storage_bytes);     \
+//   AT_CUDA_CHECK(func(temp_storage.get(), temp_storage_bytes, __VA_ARGS__));\
+// } while (false)
 
 #ifdef USE_ROCM
 #define NO_ROCM(x)
@@ -240,6 +244,18 @@ inline void inclusive_scan(InputIteratorT input, OutputIteratorT output, ScanOpT
   // even though cub is supposed to support tensors with int_max elements, in reality it doesn't,
   // so split at int_max/2
   int size_cub = std::min<int64_t>(num_items, max_cub_size);
+
+  // 小 Tensor：只跑 #else 下方的第一个 InclusiveScan
+#ifndef NATIVE
+    auto kernel_to_enqueue = std::make_unique<InclusiveScan<InputIteratorT, OutputIteratorT, ScanOpT>>(
+        input,
+        output,
+        scan_op,
+        size_cub,
+        at::cuda::getCurrentCUDAStream()
+    );
+    KernelManager::getInstance().enqueue(std::move(kernel_to_enqueue));
+#else
   CUB_WRAPPER(NO_ROCM(at_cuda_detail)::cub::DeviceScan::InclusiveScan,
       input,
       output,
@@ -247,6 +263,8 @@ inline void inclusive_scan(InputIteratorT input, OutputIteratorT output, ScanOpT
       size_cub,
       at::cuda::getCurrentCUDAStream());
   C10_CUDA_KERNEL_LAUNCH_CHECK();
+#endif
+
   using input_t = typename std::iterator_traits<InputIteratorT>::value_type;
   for (int64_t i = max_cub_size; i < num_items; i += max_cub_size) {
     auto allocator = c10::cuda::CUDACachingAllocator::get();

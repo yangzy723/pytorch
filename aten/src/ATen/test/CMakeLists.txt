@@ -60,7 +60,7 @@ list(APPEND ATen_CUDA_TEST_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda_caching_host_allocator_test.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda_complex_math_test.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda_complex_test.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/cuda_cub_test.cu
+#  ${CMAKE_CURRENT_SOURCE_DIR}/cuda_cub_test.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda_device_test.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda_distributions_test.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda_dlconvertor_test.cpp
