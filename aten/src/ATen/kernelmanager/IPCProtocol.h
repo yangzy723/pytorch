@@ -6,7 +6,7 @@
 #define LOCALHOST "127.0.0.1"
 
 static std::string createRequestMessage(const std::string& id, const std::string& type) {
-    return id + "|" + type + "\n";
+    return type + "|" + id + "|pytorch\n";
 }
 
 static std::string createResponseMessage(const std::string& id, bool allowed, const std::string& reason) {
