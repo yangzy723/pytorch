@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <iostream>
+#include <chrono>
 
 // ============================================================
 //  常量定义
@@ -121,38 +122,53 @@ struct SPSCQueue {
         return "";
     }
 
-    // 阻塞式读取（带超时）
+    // 阻塞式读取（带超时）- 高性能版本：纯忙等待
     bool pop_blocking(char* out_data, size_t max_len, int timeout_ms = -1) {
-        int elapsed = 0;
-        while (true) {
-            if (try_pop(out_data, max_len)) {
-                return true;
+        if (timeout_ms < 0) {
+            // 无超时，纯忙等待（最高性能）
+            while (!try_pop(out_data, max_len)) {
+                __asm__ __volatile__("pause" ::: "memory");
             }
-            
-            if (timeout_ms >= 0 && elapsed >= timeout_ms) {
-                return false;  // 超时
+            return true;
+        } else {
+            // 有超时
+            auto start = std::chrono::steady_clock::now();
+            while (true) {
+                if (try_pop(out_data, max_len)) {
+                    return true;
+                }
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+                if (elapsed_ms >= timeout_ms) {
+                    return false;
+                }
+                __asm__ __volatile__("pause" ::: "memory");
             }
-            
-            // 短暂休眠，避免忙等待
-            usleep(100);  // 100 微秒
-            elapsed += 1;  // 粗略计时
         }
     }
 
-    // 阻塞式写入（带超时）
+    // 阻塞式写入（带超时）- 高性能版本：纯忙等待
     bool push_blocking(const char* data, size_t len, int timeout_ms = -1) {
-        int elapsed = 0;
-        while (true) {
-            if (try_push(data, len)) {
-                return true;
+        if (timeout_ms < 0) {
+            // 无超时，纯忙等待（最高性能）
+            while (!try_push(data, len)) {
+                __asm__ __volatile__("pause" ::: "memory");
             }
-            
-            if (timeout_ms >= 0 && elapsed >= timeout_ms) {
-                return false;  // 超时
+            return true;
+        } else {
+            // 有超时
+            auto start = std::chrono::steady_clock::now();
+            while (true) {
+                if (try_push(data, len)) {
+                    return true;
+                }
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+                if (elapsed_ms >= timeout_ms) {
+                    return false;
+                }
+                __asm__ __volatile__("pause" ::: "memory");
             }
-            
-            usleep(100);
-            elapsed += 1;
         }
     }
 
