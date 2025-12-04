@@ -1,14 +1,11 @@
 #include "KernelManager.h"
-#include "IPCProtocol.h" // 假设这个文件定义了 PORT 和 HOST
+#include "IPCProtocol.h"
 
 #include <iostream>
 #include <sstream>
 #include <vector>
 #include <cstring>
 #include <unistd.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 
 #include <typeinfo>       // 用于 typeid
 #include <cxxabi.h>       // 用于 __cxa_demangle (GCC/Clang)
@@ -65,47 +62,54 @@ KernelManager& KernelManager::getInstance() {
 }
 
 // --- 构造函数 ---
-// 在构造时建立连接
-KernelManager::KernelManager() : sock_(-1), requestIdCounter_(0) {
+// 在构造时建立共享内存连接
+KernelManager::KernelManager() : channel_(nullptr), requestIdCounter_(0), connected_(false) {
     connectToScheduler();
-    std::cout << "[KernelManager] 已初始化并连接到调度器。" << std::endl;
 }
 
 // --- 析构函数 ---
-// 在析构时关闭连接
+// 在析构时清理共享内存映射
 KernelManager::~KernelManager() {
-    if (sock_ != -1) {
-        close(sock_);
-        std::cout << "[KernelManager] 已关闭与调度器的连接。" << std::endl;
+    if (channel_) {
+        // 标记客户端已断开
+        channel_->client_connected.store(false, std::memory_order_release);
+        
+        // 解除共享内存映射（不要 unlink，让调度器管理生命周期）
+        SharedMemoryHelper::unmap(channel_);
+        channel_ = nullptr;
+        std::cout << "[KernelManager] 已关闭与调度器的共享内存连接。" << std::endl;
     }
 }
 
 // --- 私有辅助方法 ---
 
 void KernelManager::connectToScheduler() {
-    struct sockaddr_in serv_addr;
-
-    if ((sock_ = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        std::cerr << "[KernelManager] Socket 创建失败" << std::endl;
-        exit(EXIT_FAILURE);
+    // 尝试打开共享内存（由调度器创建）
+    channel_ = SharedMemoryHelper::create_or_open(SHM_NAME_PYTORCH, false);
+    
+    if (!channel_) {
+        std::cerr << "[KernelManager] 无法打开共享内存，调度器可能未启动。" << std::endl;
+        return;
     }
 
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(SCHEDULER_PORT);
-
-    if (inet_pton(AF_INET, LOCALHOST, &serv_addr.sin_addr) <= 0) {
-        std::cerr << "[KernelManager] 无效的地址 / 不支持的地址" << std::endl;
-        close(sock_);
-        exit(EXIT_FAILURE);
+    // 等待调度器准备好（最多等待 5 秒）
+    int waitCount = 0;
+    const int maxWait = 50;  // 50 * 100ms = 5秒
+    while (!channel_->scheduler_ready.load(std::memory_order_acquire)) {
+        if (++waitCount > maxWait) {
+            std::cerr << "[KernelManager] 等待调度器超时，共享内存已存在但调度器未就绪。" << std::endl;
+            SharedMemoryHelper::unmap(channel_);
+            channel_ = nullptr;
+            return;
+        }
+        usleep(100000);  // 100ms
     }
 
-    if (connect(sock_, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        std::cerr << "[KernelManager] 连接失败！调度器进程是否已启动？" << std::endl;
-        close(sock_);
-        exit(EXIT_FAILURE);
-    }
+    // 标记客户端已连接
+    channel_->client_connected.store(true, std::memory_order_release);
+    connected_ = true;
 
-    std::cout << "[KernelManager] 成功连接到调度器。" << std::endl;
+    std::cout << "[KernelManager] 已通过共享内存连接到调度器 (" << SHM_NAME_PYTORCH << ")" << std::endl;
 }
 
 std::string KernelManager::generateRequestID() {
@@ -118,29 +122,39 @@ std::string KernelManager::generateRequestID() {
 // --- Public 方法 ---
 
 void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
+    if (!channel_ || !connected_) {
+        std::cerr << "[KernelManager] 错误：未连接到调度器" << std::endl;
+        // 在未连接时直接执行内核（降级模式）
+        try {
+            kernel->execute();
+        } catch (const std::exception& e) {
+            std::cerr << "[KernelManager] 降级执行时异常: " << e.what() << std::endl;
+        }
+        return;
+    }
 
     std::string reqId = generateRequestID();
     std::string kernelType = getClassName(*kernel);
     std::string requestMessage = createRequestMessage(reqId, kernelType);
-    // std::cout << "[KernelManager] 准备提交 (ID: " << reqId << "): " << kernelType << std::endl;
 
-    // std::cout << "[KernelManager] (ID: " << reqId << ") 发送请求..." << std::endl;
-    if (send(sock_, requestMessage.c_str(), requestMessage.length(), 0) < 0) {
-        std::cerr << "[KernelManager] (ID: " << reqId << ") 发送失败！连接可能已断开。" << std::endl;
+    // 发送请求到请求队列
+    if (!channel_->request_queue.push_blocking(requestMessage, 5000)) {
+        std::cerr << "[KernelManager] (ID: " << reqId << ") 发送请求超时，队列可能已满" << std::endl;
         return;
     }
 
-    // std::cout << "[KernelManager] (ID: " << reqId << ") 正在等待调度器批准..." << std::endl;
-    char buffer[1024] = {0};
-    ssize_t bytesRead = read(sock_, buffer, 1023);
-   
-    if (bytesRead <= 0) {
-        std::cerr << "[KernelManager] (ID: " << reqId << ") 从服务器读取响应失败。连接已断开。" << std::endl;
+    // 等待响应
+    char buffer[SPSC_MSG_SIZE];
+    if (!channel_->response_queue.pop_blocking(buffer, SPSC_MSG_SIZE, 10000)) {
+        std::cerr << "[KernelManager] (ID: " << reqId << ") 等待响应超时" << std::endl;
         return;
     }
 
-    std::string responseMessage(buffer, bytesRead);
-    responseMessage.erase(responseMessage.find_last_not_of("\r\n") + 1);
+    std::string responseMessage(buffer);
+    // 去除尾部换行符
+    while (!responseMessage.empty() && (responseMessage.back() == '\n' || responseMessage.back() == '\r')) {
+        responseMessage.pop_back();
+    }
     
     auto parts = split_client(responseMessage, '|');
     if (parts.size() != 3 || parts[0] != reqId) {
@@ -150,11 +164,10 @@ void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
 
     bool permissionGranted = (parts[1] == "1");
     std::string reason = parts[2];
+    
     if (permissionGranted) {
-        // std::cout << "[KernelManager] (ID: " << reqId << ") 批准！正在执行内核..." << std::endl;
         try {
             kernel->execute(); 
-            // std::cout << "[KernelManager] (ID: " << reqId << ") 内核执行完毕。" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "[KernelManager] (ID: " << reqId << ") 执行时异常: " << e.what() << std::endl;
         }

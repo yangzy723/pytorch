@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kernels/Kernel.h"
+#include "IPCProtocol.h"
 
 #include <memory>
 #include <string>
@@ -15,8 +16,11 @@ public:
     ~KernelManager();
 
     // 将内核提交给 Scheduler 审批
-    // 此函数将通过持久连接发送请求并阻塞，直到收到响应
+    // 此函数将通过共享内存发送请求并阻塞，直到收到响应
     void enqueue(std::unique_ptr<Kernel> kernel);
+
+    // 检查是否已连接到调度器
+    bool isConnected() const { return channel_ != nullptr && connected_; }
 
 private:
     // 构造函数是 private 的，用于单例
@@ -34,6 +38,7 @@ private:
 
     // --- 成员变量 ---
     
-    int sock_; // 持久化的套接字文件描述符
+    ClientChannel* channel_;             // 共享内存通道
     std::atomic<uint64_t> requestIdCounter_;
+    bool connected_;                     // 连接状态
 };
