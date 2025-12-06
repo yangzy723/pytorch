@@ -14,9 +14,12 @@
 
 // --- 静态辅助函数  ---
 
+const char* env_p = std::getenv("UNIQUE_ID");
+std::string UNIQUE_ID = env_p;
+
 namespace { // 使用匿名命名空间将它们限制在此文件
 
-// 获取内核的 demangled (可读) 核心名称
+// 获取内核的 demangled 核心名称
 std::string getClassName(const Kernel& kernel) {
     const char* mangledName = typeid(kernel).name();
     int status = 0;
@@ -65,11 +68,16 @@ KernelManager& KernelManager::getInstance() {
 // 在构造时建立共享内存连接
 KernelManager::KernelManager() : channel_(nullptr), requestIdCounter_(0), connected_(false) {
     connectToScheduler();
+<<<<<<< HEAD
+=======
+    std::cout << "[KernelManager] Connected to Scheduler (UNIQUE_ID: " << UNIQUE_ID << " )." << std::endl;
+>>>>>>> 5063f7b15b49f24fb728cbedc209460fb2d74b3f
 }
 
 // --- 析构函数 ---
 // 在析构时清理共享内存映射
 KernelManager::~KernelManager() {
+<<<<<<< HEAD
     if (channel_) {
         // 标记客户端已断开
         channel_->client_connected.store(false, std::memory_order_release);
@@ -78,6 +86,11 @@ KernelManager::~KernelManager() {
         SharedMemoryHelper::unmap(channel_);
         channel_ = nullptr;
         std::cout << "[KernelManager] 已关闭与调度器的共享内存连接。" << std::endl;
+=======
+    if (sock_ != -1) {
+        close(sock_);
+        std::cout << "[KernelManager] Connection closed (UNIQUE_ID: " << UNIQUE_ID << " )." << std::endl;
+>>>>>>> 5063f7b15b49f24fb728cbedc209460fb2d74b3f
     }
 }
 
@@ -135,7 +148,12 @@ void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
 
     std::string reqId = generateRequestID();
     std::string kernelType = getClassName(*kernel);
+<<<<<<< HEAD
     std::string requestMessage = createRequestMessage(reqId, kernelType);
+=======
+    std::string requestMessage = createRequestMessage(reqId, kernelType, UNIQUE_ID);
+    // std::cout << "[KernelManager] 准备提交 (ID: " << reqId << "): " << kernelType << std::endl;
+>>>>>>> 5063f7b15b49f24fb728cbedc209460fb2d74b3f
 
     // 发送请求到请求队列
     if (!channel_->request_queue.push_blocking(requestMessage, 5000)) {
