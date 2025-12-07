@@ -39,6 +39,9 @@ private:
     // --- 成员变量 ---
     
     ClientChannel* channel_;             // 共享内存通道
+    ClientRegistry* registry_;           // 注册表共享内存
+    int registrySlot_;                   // 在注册表中的槽位
+    std::string shmName_;                // 唯一的共享内存名称
     std::atomic<uint64_t> requestIdCounter_;
     bool connected_;                     // 连接状态
 };
