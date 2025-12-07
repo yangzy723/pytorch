@@ -26,7 +26,11 @@ std::string generateShmName() {
         // 如果没有 UNIQUE_ID，使用 PID
         suffix = std::to_string(getpid());
     }
-    return std::string(SHM_NAME_PREFIX_PYTORCH) + suffix;
+    std::string user_suffix = get_user_suffix();
+    if (!user_suffix.empty() && user_suffix[0] == '_') {
+        user_suffix = user_suffix.substr(1);  // 去掉前导下划线，避免双下划线
+    }
+    return std::string(SHM_NAME_PREFIX_PYTORCH) + user_suffix + "_" + suffix;
 }
 
 namespace { // 使用匿名命名空间将它们限制在此文件
