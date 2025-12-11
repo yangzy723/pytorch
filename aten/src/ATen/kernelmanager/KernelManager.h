@@ -1,7 +1,7 @@
 #pragma once
 
 #include "kernels/Kernel.h"
-#include "IPCProtocol.h"
+#include "ipc/Interface.h"
 
 #include <memory>
 #include <string>
@@ -16,20 +16,17 @@ public:
     ~KernelManager();
 
     // 将内核提交给 Scheduler 审批
-    // 此函数将通过共享内存发送请求并阻塞，直到收到响应
     void enqueue(std::unique_ptr<Kernel> kernel);
 
     // 检查是否已连接到调度器
     bool isConnected() const { return channel_ != nullptr && connected_; }
 
+    // 设置自定义的传输层工厂（用于测试或切换实现）
+    static void setTransportFactory(std::unique_ptr<ipc::ITransportFactory> factory);
+
 private:
-    // 构造函数是 private 的，用于单例
     KernelManager();
-
-    // 辅助函数，在构造时调用
     void connectToScheduler();
-
-    // 辅助函数
     std::string generateRequestID();
 
     // 禁用拷贝和赋值
@@ -37,11 +34,12 @@ private:
     KernelManager& operator=(const KernelManager&) = delete;
 
     // --- 成员变量 ---
+    static std::unique_ptr<ipc::ITransportFactory> transportFactory_;
+    std::unique_ptr<ipc::IChannel> channel_;
+    std::unique_ptr<ipc::IRegistry> registry_;
     
-    ClientChannel* channel_;             // 共享内存通道
-    ClientRegistry* registry_;           // 注册表共享内存
-    int registrySlot_;                   // 在注册表中的槽位
-    std::string shmName_;                // 唯一的共享内存名称
+    int registrySlot_;
+    std::string channelName_;
     std::atomic<uint64_t> requestIdCounter_;
-    bool connected_;                     // 连接状态
+    bool connected_;
 };
