@@ -123,7 +123,7 @@ KernelManager::~KernelManager() {
     // 3. 清理注册表
     registry_.reset();
 
-    std::cout << "[KernelManager] 已关闭与调度器的连接 (UNIQUE_ID: " << UNIQUE_ID 
+    std::cout << "[KernelManager] Disconnected from scheduler (UNIQUE_ID: " << UNIQUE_ID 
               << ", Channel: " << channelName_ << ")." << std::endl;
 }
 
@@ -132,7 +132,7 @@ void KernelManager::connectToScheduler() {
     registry_ = transportFactory_->createRegistry(false);
     
     if (!registry_) {
-        std::cerr << "[KernelManager] 无法打开注册表，调度器可能未启动。" << std::endl;
+        std::cerr << "[KernelManager] Failed to open registry, scheduler may not be running." << std::endl;
         return;
     }
 
@@ -141,7 +141,7 @@ void KernelManager::connectToScheduler() {
     const int maxWait = 50;  // 50 * 100ms = 5秒
     while (!registry_->isServerReady()) {
         if (++waitCount > maxWait) {
-            std::cerr << "[KernelManager] 等待调度器超时。" << std::endl;
+            std::cerr << "[KernelManager] Timeout waiting for scheduler to be ready." << std::endl;
             registry_.reset();
             return;
         }
@@ -151,7 +151,7 @@ void KernelManager::connectToScheduler() {
     // 3. 创建通信通道
     channel_ = transportFactory_->createChannel(channelName_, true);
     if (!channel_) {
-        std::cerr << "[KernelManager] 无法创建通道: " << channelName_ << std::endl;
+        std::cerr << "[KernelManager] Failed to create channel: " << channelName_ << std::endl;
         registry_.reset();
         return;
     }
@@ -160,7 +160,7 @@ void KernelManager::connectToScheduler() {
     std::string uniqueIdStr = UNIQUE_ID.empty() ? std::to_string(getpid()) : UNIQUE_ID;
     registrySlot_ = registry_->registerClient(channelName_, "pytorch", uniqueIdStr, static_cast<int64_t>(getpid()));
     if (registrySlot_ < 0) {
-        std::cerr << "[KernelManager] 注册表已满。" << std::endl;
+        std::cerr << "[KernelManager] Registry is full." << std::endl;
         transportFactory_->destroyChannel(channelName_);
         channel_.reset();
         registry_.reset();
@@ -175,7 +175,7 @@ void KernelManager::connectToScheduler() {
     const int maxWaitChannel = 100;
     while (!channel_->isServerReady()) {
         if (++waitCount > maxWaitChannel) {
-            std::cerr << "[KernelManager] 等待服务端超时: " << channelName_ << std::endl;
+            std::cerr << "[KernelManager] Timeout waiting for server to be ready: " << channelName_ << std::endl;
             registry_->unregisterClient(registrySlot_);
             transportFactory_->destroyChannel(channelName_);
             channel_.reset();
@@ -187,8 +187,8 @@ void KernelManager::connectToScheduler() {
     }
 
     connected_ = true;
-    std::cout << "[KernelManager] 已通过 " << transportFactory_->getName() 
-              << " 连接到调度器 (" << channelName_ << ")" << std::endl;
+    std::cout << "[KernelManager] Connected to scheduler via " << transportFactory_->getName() 
+              << " (" << channelName_ << ")" << std::endl;
 }
 
 std::string KernelManager::generateRequestID() {
@@ -200,12 +200,12 @@ std::string KernelManager::generateRequestID() {
 
 void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
     if (!channel_ || !connected_) {
-        std::cerr << "[KernelManager] 错误：未连接到调度器" << std::endl;
+        std::cerr << "[KernelManager] Error: Not connected to scheduler" << std::endl;
         // 降级模式：直接执行
         try {
             kernel->execute();
         } catch (const std::exception& e) {
-            std::cerr << "[KernelManager] 降级执行时异常: " << e.what() << std::endl;
+            std::cerr << "[KernelManager] Exception in degraded mode execution: " << e.what() << std::endl;
         }
         return;
     }
@@ -216,14 +216,14 @@ void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
 
     // 发送请求
     if (!channel_->getRequestQueue().sendBlocking(requestMessage, 5000)) {
-        std::cerr << "[KernelManager] (ID: " << reqId << ") 发送请求超时" << std::endl;
+        std::cerr << "[KernelManager] (ID: " << reqId << ") Timeout sending request" << std::endl;
         return;
     }
 
     // 等待响应
     std::string responseMessage;
     if (!channel_->getResponseQueue().receiveBlocking(responseMessage, 10000)) {
-        std::cerr << "[KernelManager] (ID: " << reqId << ") 等待响应超时" << std::endl;
+        std::cerr << "[KernelManager] (ID: " << reqId << ") Timeout waiting for response" << std::endl;
         return;
     }
 
@@ -234,7 +234,7 @@ void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
     
     auto parts = split_client(responseMessage, '|');
     if (parts.size() != 3 || parts[0] != reqId) {
-        std::cerr << "[KernelManager] (ID: " << reqId << ") 响应格式错误: " << responseMessage << std::endl;
+        std::cerr << "[KernelManager] (ID: " << reqId << ") Invalid response format: " << responseMessage << std::endl;
         return;
     }
 
@@ -245,10 +245,10 @@ void KernelManager::enqueue(std::unique_ptr<Kernel> kernel) {
         try {
             kernel->execute(); 
         } catch (const std::exception& e) {
-            std::cerr << "[KernelManager] (ID: " << reqId << ") 执行异常: " << e.what() << std::endl;
+            std::cerr << "[KernelManager] (ID: " << reqId << ") Execution exception: " << e.what() << std::endl;
         }
     } else {
-        std::cerr << "[KernelManager] (ID: " << reqId << ") 内核被拒绝: " << reason << std::endl;
+        std::cerr << "[KernelManager] (ID: " << reqId << ") Kernel denied: " << reason << std::endl;
     }
 }
 
