@@ -23,8 +23,8 @@
 #include <ATen/ops/narrow.h>
 #endif
 
-#include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/CatArrayBatchedCopyAlignedKContig.h>
+#include <ATen/manager/KernelManager.h>
+#include <ATen/manager/kernels/CatArrayBatchedCopyAlignedKContig.h>
 #include <memory> // 包含 std::make_unique
 
 namespace at::native {

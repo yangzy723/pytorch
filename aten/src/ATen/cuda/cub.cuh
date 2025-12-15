@@ -34,8 +34,8 @@
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <c10/cuda/CUDAStream.h>
 
-#include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/InclusiveScan.h>
+#include <ATen/manager/KernelManager.h>
+#include <ATen/manager/kernels/InclusiveScan.h>
 #include <memory> // 包含 std::make_unique
 
 // // handle the temporary storage and 'twice' calls for cub API

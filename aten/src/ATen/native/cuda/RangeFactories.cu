@@ -22,8 +22,8 @@
 
 #define GPU_LAMBDA __device__ __host__
 
-#include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/ElementwiseKernelWithIndex.h>
+#include <ATen/manager/KernelManager.h>
+#include <ATen/manager/kernels/ElementwiseKernelWithIndex.h>
 #include <memory> // 包含 std::make_unique
 
 namespace at::native {

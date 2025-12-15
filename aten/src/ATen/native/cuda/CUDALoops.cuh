@@ -40,10 +40,10 @@
 #include <c10/macros/Macros.h>
 #include <c10/util/TypeCast.h>
 
-#include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/VectorizedElementwiseKernel.h>
-#include <ATen/kernelmanager/kernels/UnrolledElementwiseKernel.h>
-#include <ATen/kernelmanager/kernels/ElementwiseKernel.h>
+#include <ATen/manager/KernelManager.h>
+#include <ATen/manager/kernels/VectorizedElementwiseKernel.h>
+#include <ATen/manager/kernels/UnrolledElementwiseKernel.h>
+#include <ATen/manager/kernels/ElementwiseKernel.h>
 #include <memory> // 包含 std::make_unique
 
 #ifdef __NVCC__

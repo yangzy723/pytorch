@@ -6,8 +6,8 @@
 #include <ATen/native/cuda/Loops.cuh>
 #include <ATen/ceil_div.h>
 
-#include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/VectorizedGatherKernel.h>
+#include <ATen/manager/KernelManager.h>
+#include <ATen/manager/kernels/VectorizedGatherKernel.h>
 #include <memory> // 包含 std::make_unique
 
 namespace at::native {

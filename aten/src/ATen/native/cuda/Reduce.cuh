@@ -19,8 +19,8 @@
 
 #include <ATen/native/cuda/jit_utils.h>
 
-#include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/ReduceKernel.h>
+#include <ATen/manager/KernelManager.h>
+#include <ATen/manager/kernels/ReduceKernel.h>
 #include <memory> // 包含 std::make_unique
 
 namespace at::native {

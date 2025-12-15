@@ -46,8 +46,8 @@
 
 #include <c10/macros/Macros.h>
 
-#include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/IndexSelectSmallIndex.h>
+#include <ATen/manager/KernelManager.h>
+#include <ATen/manager/kernels/IndexSelectSmallIndex.h>
 #include <memory> // 包含 std::make_unique
 
 namespace {

@@ -19,8 +19,8 @@
 
 #include <c10/core/Scalar.h>
 
-#include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/IndexElementwiseKernel.h>
+#include <ATen/manager/KernelManager.h>
+#include <ATen/manager/kernels/IndexElementwiseKernel.h>
 #include <memory> // 包含 std::make_unique
 
 namespace at::native {

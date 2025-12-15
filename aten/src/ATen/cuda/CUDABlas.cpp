@@ -16,8 +16,8 @@
 #include <c10/util/irange.h>
 #include <c10/core/ScalarType.h>
 
-#include <ATen/kernelmanager/KernelManager.h>
-#include <ATen/kernelmanager/kernels/GemmInternalCublas.h>
+#include <ATen/manager/KernelManager.h>
+#include <ATen/manager/kernels/GemmInternalCublas.h>
 #include <memory> // 包含 std::make_unique
 
 #ifdef USE_ROCM
